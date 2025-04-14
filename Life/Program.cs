@@ -4,13 +4,72 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Threading;
+using System.Text.Json;
+using System.IO;
 
 namespace cli_life
 {
+    public class LifeProperty
+    {
+        public LifeProperty() {}
+        public LifeProperty(int BoardWidth, int BoardHeight, int BoardCellSize, double LifeDensity)
+        {
+            this.BoardWidth = BoardWidth;
+            this.BoardHeight = BoardHeight;
+            this.BoardCellSize = BoardCellSize;
+            this.LifeDensity = LifeDensity;
+        }
+        public int BoardWidth { get; set; }
+        public int BoardHeight { get; set; }
+        public int BoardCellSize { get; set; }
+        public double LifeDensity { get; set; }
+    }
+
+    public class JSONController
+    {
+        public static LifeProperty DeserializeFromJSON(string file_name)
+        {
+            string jsonString = File.ReadAllText(file_name);
+
+            return JsonSerializer.Deserialize<LifeProperty>(jsonString)!;
+        }
+    }
+    public class TextController
+    {
+        public static void Save_life(Cell[,] the_cells, string file_name)
+        {
+            using StreamWriter save_life = new StreamWriter(file_name);
+
+            for (int row = 0; row < the_cells.GetLength(1); row++)
+            {
+                for (int col = 0; col < the_cells.GetLength(0); col++)
+                {
+                    save_life.Write(the_cells[col, row].IsAlive ? '1' : '0');
+                }
+                save_life.Write("\n");
+            }
+        }
+
+        public static void Read_life(Cell[,] the_cells, string theFileName)
+        {
+            var lines = File.ReadAllLines(theFileName);
+            int rows = the_cells.GetLength(1);
+            int col = the_cells.GetLength(0);
+
+            for (int y = 0; y < rows && y < lines.Length; y++)
+            {
+                for (int x = 0; x < col && x < lines[y].Length; x++)
+                {
+                    the_cells[x, y].IsAlive = lines[y][x] == '1';
+                }
+
+            }
+        }
+    }
     public class Cell
     {
         public bool IsAlive;
-        public readonly List<Cell> neighbors = new List<Cell>();
+        public readonly List<Cell> neighbors = [];
         private bool IsAliveNext;
         public void DetermineNextLiveState()
         {
@@ -89,13 +148,13 @@ namespace cli_life
     class Program
     {
         static Board board;
-        static private void Reset()
+        static private void Reset(LifeProperty LifeProperty)
         {
             board = new Board(
-                width: 50,
-                height: 20,
-                cellSize: 1,
-                liveDensity: 0.5);
+                LifeProperty.BoardWidth,
+                LifeProperty.BoardHeight,
+                LifeProperty.BoardCellSize,
+                LifeProperty.LifeDensity);
         }
         static void Render()
         {
@@ -116,11 +175,32 @@ namespace cli_life
                 Console.Write('\n');
             }
         }
+        static bool Click_handler(string file_path) {
+            if (Console.KeyAvailable) {
+                var button = Console.ReadKey(true).Key;
+                if (button == ConsoleKey.L) {
+                    TextController.Read_life(board.Cells, file_path);
+                }
+                else if (button == ConsoleKey.S) {
+                    TextController.Save_life(board.Cells, file_path);
+                }
+                else if (button == ConsoleKey.E) {
+                    return false;
+                }
+            }
+            return true;
+        }
         static void Main(string[] args)
         {
-            Reset();
+            string proj_path = Directory.GetCurrentDirectory();
+            string prop_path = Path.Combine(proj_path,"Property.json");
+            string file_path = Path.Combine(proj_path,"LifeBoard.txt");
+            LifeProperty life_property = JSONController.DeserializeFromJSON(prop_path);
+            Reset(life_property);
             while(true)
             {
+                if (Click_handler(file_path) == false)
+                    break;
                 Console.Clear();
                 Render();
                 board.Advance();
