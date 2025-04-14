@@ -50,9 +50,9 @@ namespace cli_life
             }
         }
 
-        public static void Read_life(Cell[,] the_cells, string theFileName)
+        public static void Read_life(Cell[,] the_cells, string file_name)
         {
-            var lines = File.ReadAllLines(theFileName);
+            var lines = File.ReadAllLines(file_name);
             int rows = the_cells.GetLength(1);
             int col = the_cells.GetLength(0);
 
@@ -62,7 +62,28 @@ namespace cli_life
                 {
                     the_cells[x, y].IsAlive = lines[y][x] == '1';
                 }
+            }
+        }
 
+        public static void Load_figure(Cell[,] the_cells, string figureFilePath)
+        {
+            var lines = File.ReadAllLines(figureFilePath);
+            int figureHeight = lines.Length;
+            int figureWidth = lines[0].Length;
+
+            Random rand = new();
+            int startX = rand.Next(0, the_cells.GetLength(0) - figureWidth + 1);
+            int startY = rand.Next(0, the_cells.GetLength(1) - figureHeight + 1);
+
+            for (int y = 0; y < figureHeight; y++)
+            {
+                for (int x = 0; x < figureWidth; x++)
+                {
+                    if (startX + x < the_cells.GetLength(0) && startY + y < the_cells.GetLength(1))
+                    {
+                        the_cells[startX + x, startY + y].IsAlive = lines[y][x] == '1';
+                    }
+                }
             }
         }
     }
@@ -148,6 +169,52 @@ namespace cli_life
     class Program
     {
         static Board board;
+        static readonly Dictionary<ConsoleKey, string> figureMap = new()
+        {
+            { ConsoleKey.D1, "glider.txt" },
+            { ConsoleKey.D2, "blinker.txt" },
+            { ConsoleKey.D3, "block.txt" },
+            { ConsoleKey.D4, "ellipse.txt" }, 
+            { ConsoleKey.D5, "hive.txt" }
+        };
+
+        static void Main(string[] args)
+        {
+            InitializeGame();
+            RunGameLoop();
+        }
+
+        static void InitializeGame()
+        {
+            string proj_path = Directory.GetCurrentDirectory();
+            string prop_path = Path.Combine(proj_path, "Property.json");
+            string file_path = Path.Combine(proj_path, "LifeBoard.txt");
+            
+            LifeProperty life_property = JSONController.DeserializeFromJSON(prop_path);
+            Reset(life_property);
+        }
+
+        static void RunGameLoop()
+        {
+            string file_path = Path.Combine(Directory.GetCurrentDirectory(), "LifeBoard.txt");
+            
+            while (true)
+            {
+                if (!Click_handler(file_path))
+                    break;
+                    
+                UpdateGame();
+            }
+        }
+
+        static void UpdateGame()
+        {
+            Console.Clear();
+            Render();
+            board.Advance();
+            Thread.Sleep(1000);
+        }
+
         static private void Reset(LifeProperty LifeProperty)
         {
             board = new Board(
@@ -156,55 +223,54 @@ namespace cli_life
                 LifeProperty.BoardCellSize,
                 LifeProperty.LifeDensity);
         }
+
         static void Render()
         {
+            var output = new StringBuilder();
+            
             for (int row = 0; row < board.Rows; row++)
             {
-                for (int col = 0; col < board.Columns; col++)   
+                for (int col = 0; col < board.Columns; col++)
                 {
-                    var cell = board.Cells[col, row];
-                    if (cell.IsAlive)
-                    {
-                        Console.Write('*');
-                    }
-                    else
-                    {
-                        Console.Write(' ');
-                    }
+                    output.Append(board.Cells[col, row].IsAlive ? '*' : ' ');
                 }
-                Console.Write('\n');
+                output.AppendLine();
             }
+            
+            Console.Write(output);
         }
-        static bool Click_handler(string file_path) {
-            if (Console.KeyAvailable) {
-                var button = Console.ReadKey(true).Key;
-                if (button == ConsoleKey.L) {
+
+        static bool Click_handler(string file_path) 
+        {
+            if (!Console.KeyAvailable) 
+                return true;
+
+            var button = Console.ReadKey(true).Key;
+
+            switch (button)
+            {
+                case ConsoleKey.L:
                     TextController.Read_life(board.Cells, file_path);
-                }
-                else if (button == ConsoleKey.S) {
+                    break;
+                case ConsoleKey.S:
                     TextController.Save_life(board.Cells, file_path);
-                }
-                else if (button == ConsoleKey.E) {
+                    break;
+                case ConsoleKey.E:
                     return false;
-                }
+                default:
+                    HandleFigureLoading(button);
+                    break;
             }
+
             return true;
         }
-        static void Main(string[] args)
+
+        static void HandleFigureLoading(ConsoleKey button)
         {
-            string proj_path = Directory.GetCurrentDirectory();
-            string prop_path = Path.Combine(proj_path,"Property.json");
-            string file_path = Path.Combine(proj_path,"LifeBoard.txt");
-            LifeProperty life_property = JSONController.DeserializeFromJSON(prop_path);
-            Reset(life_property);
-            while(true)
+            if (figureMap.TryGetValue(button, out string figureName))
             {
-                if (Click_handler(file_path) == false)
-                    break;
-                Console.Clear();
-                Render();
-                board.Advance();
-                Thread.Sleep(1000);
+                string figurePath = Path.Combine(Directory.GetCurrentDirectory(), "figures", figureName);
+                TextController.Load_figure(board.Cells, figurePath);
             }
         }
     }
