@@ -166,6 +166,68 @@ namespace cli_life
             }
         }
     }
+
+    public class ElementCounter
+    {
+        private readonly Board board;
+        private bool[,] visited;
+
+        public ElementCounter(Board board)
+        {
+            this.board = board;
+            this.visited = new bool[board.Columns, board.Rows];
+        }
+
+        public (int totalCells, int combinations) CountElements()
+        {
+            int totalCells = 0; 
+            int combinations = 0; 
+
+            Array.Clear(visited, 0, visited.Length);
+            
+            for (int x = 0; x < board.Columns; x++)
+            {
+                for (int y = 0; y < board.Rows; y++)
+                {
+                    if (!visited[x, y] && board.Cells[x, y].IsAlive)
+                    {
+                        int combinationSize = ExploreCombination(x, y);
+                        totalCells += combinationSize; 
+                        
+                        if (combinationSize > 1)
+                        {
+                            combinations++;
+                        }
+                    }
+                }
+            }
+            
+            return (totalCells, combinations);
+        }
+
+        private int ExploreCombination(int x, int y)
+        {
+            if (x < 0 || x >= board.Columns || y < 0 || y >= board.Rows || 
+                visited[x, y] || !board.Cells[x, y].IsAlive)
+                return 0;
+            visited[x, y] = true;
+            int size = 1; 
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    if (dx == 0 && dy == 0) continue; 
+                    
+                    int nx = (x + dx + board.Columns) % board.Columns;
+                    int ny = (y + dy + board.Rows) % board.Rows;
+                    
+                    size += ExploreCombination(nx, ny);
+                }
+            }
+            return size;
+        }
+    }
+
     class Program
     {
         static Board board;
@@ -180,24 +242,17 @@ namespace cli_life
 
         static void Main(string[] args)
         {
-            InitializeGame();
-            RunGameLoop();
-        }
-
-        static void InitializeGame()
-        {
             string proj_path = Directory.GetCurrentDirectory();
             string prop_path = Path.Combine(proj_path, "Property.json");
             string file_path = Path.Combine(proj_path, "LifeBoard.txt");
-            
             LifeProperty life_property = JSONController.DeserializeFromJSON(prop_path);
             Reset(life_property);
+            RunGameLoop(file_path);
         }
 
-        static void RunGameLoop()
-        {
-            string file_path = Path.Combine(Directory.GetCurrentDirectory(), "LifeBoard.txt");
-            
+
+        static void RunGameLoop(string file_path)
+        { 
             while (true)
             {
                 if (!Click_handler(file_path))
@@ -209,8 +264,8 @@ namespace cli_life
 
         static void UpdateGame()
         {
-            Console.Clear();
-            Render();
+            var counter = new ElementCounter(board);
+            Render(counter);
             board.Advance();
             Thread.Sleep(1000);
         }
@@ -224,10 +279,10 @@ namespace cli_life
                 LifeProperty.LifeDensity);
         }
 
-        static void Render()
+        static (int totalCells, int combinations) Render(ElementCounter counter)
         {
+            Console.Clear();
             var output = new StringBuilder();
-            
             for (int row = 0; row < board.Rows; row++)
             {
                 for (int col = 0; col < board.Columns; col++)
@@ -236,17 +291,17 @@ namespace cli_life
                 }
                 output.AppendLine();
             }
-            
+            var (totalCells, combinations) = counter.CountElements();
+            output.Append($"Одиночные клетки: {totalCells}, Комбинации: {combinations}");
             Console.Write(output);
+            return (totalCells, combinations);
         }
 
         static bool Click_handler(string file_path) 
         {
             if (!Console.KeyAvailable) 
                 return true;
-
             var button = Console.ReadKey(true).Key;
-
             switch (button)
             {
                 case ConsoleKey.L:
@@ -261,7 +316,6 @@ namespace cli_life
                     HandleFigureLoading(button);
                     break;
             }
-
             return true;
         }
 
