@@ -109,6 +109,7 @@ namespace cli_life
     {
         public readonly Cell[,] Cells;
         public readonly int CellSize;
+        public bool[,] visited;
 
         public int Columns { get { return Cells.GetLength(0); } }
         public int Rows { get { return Cells.GetLength(1); } }
@@ -123,9 +124,9 @@ namespace cli_life
             for (int x = 0; x < Columns; x++)
                 for (int y = 0; y < Rows; y++)
                     Cells[x, y] = new Cell();
-
             ConnectNeighbors();
             Randomize(liveDensity);
+            visited = new bool[Columns, Rows];
         }
 
         readonly Random rand = new Random();
@@ -165,19 +166,6 @@ namespace cli_life
                 }
             }
         }
-    }
-
-    public class ElementCounter
-    {
-        private readonly Board board;
-        private bool[,] visited;
-
-        public ElementCounter(Board board)
-        {
-            this.board = board;
-            this.visited = new bool[board.Columns, board.Rows];
-        }
-
         public (int totalCells, int combinations) CountElements()
         {
             int totalCells = 0; 
@@ -185,11 +173,11 @@ namespace cli_life
 
             Array.Clear(visited, 0, visited.Length);
             
-            for (int x = 0; x < board.Columns; x++)
+            for (int x = 0; x < Columns; x++)
             {
-                for (int y = 0; y < board.Rows; y++)
+                for (int y = 0; y < Rows; y++)
                 {
-                    if (!visited[x, y] && board.Cells[x, y].IsAlive)
+                    if (!visited[x, y] && Cells[x, y].IsAlive)
                     {
                         int combinationSize = ExploreCombination(x, y);
                         totalCells += combinationSize; 
@@ -207,8 +195,7 @@ namespace cli_life
 
         private int ExploreCombination(int x, int y)
         {
-            if (x < 0 || x >= board.Columns || y < 0 || y >= board.Rows || 
-                visited[x, y] || !board.Cells[x, y].IsAlive)
+            if (x < 0 || x >= Columns || y < 0 || y >= Rows || visited[x, y] || !Cells[x, y].IsAlive)
                 return 0;
             visited[x, y] = true;
             int size = 1; 
@@ -218,19 +205,146 @@ namespace cli_life
                 {
                     if (dx == 0 && dy == 0) continue; 
                     
-                    int nx = (x + dx + board.Columns) % board.Columns;
-                    int ny = (y + dy + board.Rows) % board.Rows;
+                    int nx = (x + dx + Columns) % Columns;
+                    int ny = (y + dy + Rows) % Rows;
                     
                     size += ExploreCombination(nx, ny);
                 }
             }
             return size;
         }
+        
     }
 
+    public class PatternClassifier
+    {
+        private static readonly Dictionary<string, string> FigureFiles = new()
+        {
+            ["Block"] = "block.txt",
+            ["Blinker"] = "blinker.txt",
+            ["Hive"] = "hive.txt",
+            ["Glider"] = "glider.txt",
+            ["Boat"] = "ellipse.txt"
+        };
+
+        private readonly Dictionary<string, bool[,]> _patterns;
+        private bool[,] _visited;
+
+        public PatternClassifier()
+        {
+            _patterns = LoadPatterns();
+        }
+
+        private Dictionary<string, bool[,]> LoadPatterns()
+        {
+            var patterns = new Dictionary<string, bool[,]>();
+            string dir = Path.Combine(Directory.GetCurrentDirectory(), "figures");
+
+            foreach (var kvp in FigureFiles)
+            {
+                string path = Path.Combine(dir, kvp.Value);
+                if (File.Exists(path))
+                {
+                    patterns[kvp.Key] = ReadPattern(path);
+                }
+            }
+            return patterns;
+        }
+
+        private bool[,] ReadPattern(string path)
+        {
+            var lines = File.ReadAllLines(path).Where(l => !string.IsNullOrWhiteSpace(l)).ToArray();
+            var pattern = new bool[lines[0].Length, lines.Length];
+            
+            for (int y = 0; y < lines.Length; y++)
+                for (int x = 0; x < lines[y].Length; x++)
+                    pattern[x, y] = lines[y][x] == '1';
+            
+            return pattern;
+        }
+
+        public Dictionary<string, int> ClassifyBoard(Board board)
+        {
+            var result = _patterns.Keys.ToDictionary(k => k, _ => 0);
+            result["Unknown"] = 0;
+            _visited = new bool[board.Columns, board.Rows];
+
+            for (int x = 0; x < board.Columns; x++)
+                for (int y = 0; y < board.Rows; y++)
+                    if (!_visited[x, y] && board.Cells[x, y].IsAlive)
+                    {
+                        var cells = FindCells(board, x, y);
+                        if (cells.Count > 1)
+                            result[Classify(CreatePattern(cells))]++;
+                    }
+
+            return result;
+        }
+
+        private List<(int x, int y)> FindCells(Board board, int startX, int startY)
+        {
+            var cells = new List<(int x, int y)>();
+            var queue = new Queue<(int x, int y)>();
+            queue.Enqueue((startX, startY));
+
+            while (queue.Count > 0)
+            {
+                var (x, y) = queue.Dequeue();
+                if (x < 0 || x >= board.Columns || y < 0 || y >= board.Rows || 
+                    _visited[x, y] || !board.Cells[x, y].IsAlive) continue;
+
+                _visited[x, y] = true;
+                cells.Add((x, y));
+
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dy = -1; dy <= 1; dy++)
+                        if (dx != 0 || dy != 0)
+                            queue.Enqueue(((x + dx + board.Columns) % board.Columns, 
+                                        (y + dy + board.Rows) % board.Rows));
+            }
+            return cells;
+        }
+
+        private bool[,] CreatePattern(List<(int x, int y)> cells)
+        {
+            int minX = cells.Min(c => c.x), maxX = cells.Max(c => c.x);
+            int minY = cells.Min(c => c.y), maxY = cells.Max(c => c.y);
+            var pattern = new bool[maxX - minX + 1, maxY - minY + 1];
+            
+            foreach (var (x, y) in cells)
+                pattern[x - minX, y - minY] = true;
+            
+            return pattern;
+        }
+
+        private string Classify(bool[,] pattern)
+        {
+            foreach (var kvp in _patterns)
+                if (PatternEquals(pattern, kvp.Value))
+                    return kvp.Key;
+            
+            return "Unknown";
+        }
+
+        private bool PatternEquals(bool[,] a, bool[,] b)
+        {
+            if (a.GetLength(0) != b.GetLength(0) || a.GetLength(1) != b.GetLength(1)) 
+                return false;
+            
+            for (int x = 0; x < a.GetLength(0); x++)
+                for (int y = 0; y < a.GetLength(1); y++)
+                    if (a[x, y] != b[x, y]) 
+                        return false;
+            
+            return true;
+        }
+    }
     class Program
     {
         static Board board;
+        static int stable_phases = 0;
+        static int combinations = 0;
+        static int min_stable_phases = 10;
         static readonly Dictionary<ConsoleKey, string> figureMap = new()
         {
             { ConsoleKey.D1, "glider.txt" },
@@ -264,8 +378,13 @@ namespace cli_life
 
         static void UpdateGame()
         {
-            var counter = new ElementCounter(board);
-            Render(counter);
+            Render();
+            (int totalCells, int combinations_check) = DisplayElementCounts();
+            DisplayClassification();
+            if(Check_stability(combinations_check)){
+                Console.WriteLine("\n Достигнуто состояние стабильности");
+                Environment.Exit(0);
+            }
             board.Advance();
             Thread.Sleep(1000);
         }
@@ -279,7 +398,7 @@ namespace cli_life
                 LifeProperty.LifeDensity);
         }
 
-        static (int totalCells, int combinations) Render(ElementCounter counter)
+        static void Render()
         {
             Console.Clear();
             var output = new StringBuilder();
@@ -291,10 +410,7 @@ namespace cli_life
                 }
                 output.AppendLine();
             }
-            var (totalCells, combinations) = counter.CountElements();
-            output.Append($"Одиночные клетки: {totalCells}, Комбинации: {combinations}");
             Console.Write(output);
-            return (totalCells, combinations);
         }
 
         static bool Click_handler(string file_path) 
@@ -327,5 +443,42 @@ namespace cli_life
                 TextController.Load_figure(board.Cells, figurePath);
             }
         }
+        static (int totalCells, int combinations) DisplayElementCounts()
+        {
+            var (totalCells, combinations) = board.CountElements();
+            Console.WriteLine($"Одиночные клетки: {totalCells}, Комбинации: {combinations}");
+            return (totalCells, combinations);
+        }
+        static void DisplayClassification()
+        {
+            var classifier = new PatternClassifier();
+            var results = classifier.ClassifyBoard(board);
+            
+            Console.WriteLine("\n Найденные фигуры:");
+            foreach (var kvp in results.Where(r => r.Value > 0))
+            {
+                Console.WriteLine($"{kvp.Key}: {kvp.Value}");
+            }
+        }
+        static bool Check_stability(int combinations_check){
+            if (stable_phases == 0) {
+                stable_phases +=1;
+                combinations = combinations_check;
+            }
+            else {
+                if (combinations == combinations_check) {
+                    stable_phases +=1;
+                    if (stable_phases == min_stable_phases){
+                        return true;
+                    }
+                }
+                else {
+                    stable_phases = 1;
+                    combinations = combinations_check;
+                }
+            }
+            return false;
+        }
     }
+    
 }
