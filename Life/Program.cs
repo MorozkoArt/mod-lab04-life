@@ -365,6 +365,7 @@ namespace cli_life
             Reset(life_property);
             RunGameLoop(file_path);
             //Avg_gen_stab(prop_path, file_path);
+            //For_data(prop_path, file_path);
         }
         static void Avg_gen_stab(string prop_path, string file_path){
             double density = 0.1;
@@ -393,14 +394,35 @@ namespace cli_life
                     combinations = 0;
                     RunGameLoop(file_path);
                     generation_density.Add(generation);
-                    line = $"{i + 1} - запуск: количество поколений: {generation}{Environment.NewLine}";
+                    line = $"{i + 1} - запуск: количество поколений: {generation}\n";
                     File.AppendAllText(filePath, line);
                     
                     
                 }
-                line = $"Среднее колличество поколений: {Math.Round(generation_density.Average())}{Environment.NewLine}";
+                line = $"Среднее колличество поколений: {Math.Round(generation_density.Average())}\n";
                 File.AppendAllText(filePath, line);
                 density+=0.1;
+            }
+        }
+        static void For_data(string prop_path, string file_path){
+            double density = 0;
+            double step_density = 0.02;
+            string outputfile = Path.Combine(Directory.GetCurrentDirectory(), "data.txt");
+            string line = "Density  Generation\n";
+            File.AppendAllText(outputfile, line);
+            while (density < 1.01)
+            {
+                LifeProperty life_property = JSONController.DeserializeFromJSON(prop_path);
+                life_property.LifeDensity = density;
+
+                Reset(life_property);
+                generation = 0;
+                stable_phases = 0;
+                combinations = 0;
+                RunGameLoop(file_path);
+                line = $"{Math.Round(density, 2)} {generation}\n";
+                File.AppendAllText(outputfile, line);
+                density+=step_density;
             }
         }
 
@@ -533,5 +555,4 @@ namespace cli_life
             return false;
         }
     }
-    
 }
