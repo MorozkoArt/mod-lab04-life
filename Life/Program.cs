@@ -92,7 +92,7 @@ namespace cli_life
     {
         public bool IsAlive;
         public readonly List<Cell> neighbors = [];
-        private bool IsAliveNext;
+        public bool IsAliveNext;
         public void DetermineNextLiveState()
         {
             int liveNeighbors = neighbors.Where(x => x.IsAlive).Count();
@@ -318,7 +318,7 @@ namespace cli_life
             return pattern;
         }
 
-        private string Classify(bool[,] pattern)
+        public string Classify(bool[,] pattern)
         {
             foreach (var kvp in _patterns)
                 if (PatternEquals(pattern, kvp.Value))
@@ -340,7 +340,7 @@ namespace cli_life
             return true;
         }
     }
-    class Program
+    public class Program
     {
         static Board board;
         static int stable_phases = 0;
