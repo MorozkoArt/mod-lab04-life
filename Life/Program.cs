@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Text.Json;
 using System.IO;
+using System.Diagnostics.CodeAnalysis;
 
 namespace cli_life
 {
@@ -344,6 +345,7 @@ namespace cli_life
         static Board board;
         static int stable_phases = 0;
         static int combinations = 0;
+        static int generation = 0;
         static int min_stable_phases = 10;
         static readonly Dictionary<ConsoleKey, string> figureMap = new()
         {
@@ -362,31 +364,73 @@ namespace cli_life
             LifeProperty life_property = JSONController.DeserializeFromJSON(prop_path);
             Reset(life_property);
             RunGameLoop(file_path);
+            //Avg_gen_stab(prop_path, file_path);
+        }
+        static void Avg_gen_stab(string prop_path, string file_path){
+            double density = 0.1;
+            int number_files = 10;
+            List<int> generation_density = [];
+
+            string outputDir = Path.Combine(Directory.GetCurrentDirectory(), "AvgGenerationStab");
+            if (!Directory.Exists(outputDir))
+            {
+                Directory.CreateDirectory(outputDir);
+            }
+            while (density < 0.9)
+            {
+                LifeProperty life_property = JSONController.DeserializeFromJSON(prop_path);
+                life_property.LifeDensity = density;
+                generation_density.Clear();
+
+                string fileName = $"density_{density:0.0}.txt";
+                string filePath = Path.Combine(outputDir, fileName);
+                string line;
+
+                for (int i = 0; i < number_files; i++){
+                    Reset(life_property);
+                    generation = 0;
+                    stable_phases = 0;
+                    combinations = 0;
+                    RunGameLoop(file_path);
+                    generation_density.Add(generation);
+                    line = $"{i + 1} - запуск: количество поколений: {generation}{Environment.NewLine}";
+                    File.AppendAllText(filePath, line);
+                    
+                    
+                }
+                line = $"Среднее колличество поколений: {Math.Round(generation_density.Average())}{Environment.NewLine}";
+                File.AppendAllText(filePath, line);
+                density+=0.1;
+            }
         }
 
 
-        static void RunGameLoop(string file_path)
+        static bool RunGameLoop(string file_path)
         { 
             while (true)
             {
                 if (!Click_handler(file_path))
                     break;
                     
-                UpdateGame();
+                if(UpdateGame()) return true;
             }
+            return false;
         }
 
-        static void UpdateGame()
+        static bool UpdateGame()
         {
             Render();
+            generation+=1;
+            Console.WriteLine($"\n Поколение: {generation}");
             (int totalCells, int combinations_check) = DisplayElementCounts();
             DisplayClassification();
             if(Check_stability(combinations_check)){
                 Console.WriteLine("\n Достигнуто состояние стабильности");
-                Environment.Exit(0);
+                return true;
             }
             board.Advance();
             Thread.Sleep(1000);
+            return false;
         }
 
         static private void Reset(LifeProperty LifeProperty)
@@ -422,6 +466,9 @@ namespace cli_life
             {
                 case ConsoleKey.L:
                     TextController.Read_life(board.Cells, file_path);
+                    stable_phases = 0;
+                    combinations = 0;
+                    generation = 0;
                     break;
                 case ConsoleKey.S:
                     TextController.Save_life(board.Cells, file_path);
@@ -467,6 +514,12 @@ namespace cli_life
             }
             else {
                 if (combinations == combinations_check) {
+                    stable_phases +=1;
+                    if (stable_phases == min_stable_phases){
+                        return true;
+                    }
+                }
+                else if(generation>=1000 && Math.Abs(combinations - combinations_check) == 1){
                     stable_phases +=1;
                     if (stable_phases == min_stable_phases){
                         return true;
